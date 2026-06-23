@@ -12,12 +12,14 @@ import time
 from typing import Any
 
 
-def verify_compile_output(compile_result: dict) -> dict:
+def verify_compile_output(compile_result: dict, baseline_css_size: int = 0) -> dict:
     """
     驗證 Compile API 回傳的產物是否有效。
 
     Args:
         compile_result: compile_app() 的回傳值
+        baseline_css_size: 上次成功編譯的 CSS 大小（可選）。
+                          若提供，會進行回歸比對（新 CSS < 基線 50% 視為異常）。
 
     Returns:
         驗證報告 dict
@@ -34,6 +36,20 @@ def verify_compile_output(compile_result: dict) -> dict:
     checks.append(("bundle_js_not_empty", len(js) > 500))
     checks.append(("bundle_js_has_react", "React" in js or "react" in js or "createElement" in js))
     checks.append(("css_not_empty", len(css) > 50))
+
+    # ★ App.css 內容存在性檢查：確認 CSS 含有 App 自定義樣式
+    # Runtime 基礎 CSS ~42KB，但不含 :host/:root 變數宣告，這些來自 App.css
+    has_app_css_markers = (
+        ":host" in css or ":root" in css  # CSS 變數宣告（SKILL.md 要求 :host, :root）
+        or "--" in css  # CSS custom properties
+    )
+    checks.append(("css_has_app_styles", has_app_css_markers))
+
+    # ★ CSS 基線回歸比對（如有提供基線）
+    if baseline_css_size > 0:
+        regression_ratio = len(css) / baseline_css_size
+        # CSS 大小低於基線的 50% 視為回歸（可能遺失 App.css）
+        checks.append(("css_no_regression", regression_ratio >= 0.5))
 
     all_pass = all(ok for _, ok in checks)
     return {
