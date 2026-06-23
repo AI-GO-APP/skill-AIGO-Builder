@@ -1,0 +1,45 @@
+"""AI GO Custom App 發布工具"""
+from typing import Any
+
+
+def publish_app(base_url: str, token: str, app_id: str) -> dict:
+    """發布 App"""
+    import httpx
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    resp = httpx.post(f"{base_url}/api/v1/builder/apps/{app_id}/publish",
+                      headers=headers, json={"published_assets": {}}, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def check_publish_status(base_url: str, token: str, app_id: str) -> str:
+    """檢查發布狀態"""
+    import httpx
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = httpx.get(f"{base_url}/api/v1/builder/apps/{app_id}", headers=headers, timeout=30)
+    resp.raise_for_status()
+    return resp.json().get("status", "unknown")
+
+
+def full_deploy(base_url: str, token: str, app_id: str, slug: str, project_path: str) -> dict:
+    """完整部署流程：sync → compile → publish"""
+    from aigo_sync import read_local_files, get_remote_vfs, sync_to_cloud
+    from aigo_compile import compile_app
+
+    result: dict[str, Any] = {"sync": None, "compile": None, "publish": None}
+
+    # 1. 同步
+    local_files = read_local_files(project_path)
+    _, version = get_remote_vfs(base_url, token, app_id)
+    result["sync"] = sync_to_cloud(base_url, token, app_id, local_files, version)
+
+    # 2. 編譯
+    compile_result = compile_app(base_url, token, slug)
+    result["compile"] = {"success": compile_result.get("success", False)}
+    if not compile_result.get("success"):
+        result["compile"]["error"] = compile_result.get("error", "未知錯誤")
+        return result
+
+    # 3. 發布
+    result["publish"] = publish_app(base_url, token, app_id)
+    return result

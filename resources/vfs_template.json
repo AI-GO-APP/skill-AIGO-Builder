@@ -1,0 +1,6 @@
+{
+  "package.json": "{\n  \"name\": \"my-custom-app\",\n  \"private\": true,\n  \"version\": \"0.0.1\",\n  \"dependencies\": {\n    \"react\": \"^18.2.0\",\n    \"react-dom\": \"^18.2.0\"\n  }\n}",
+  "src/main.tsx": "import React from \"react\";\nimport ReactDOM from \"react-dom/client\";\nimport App from \"./App\";\nimport \"./App.css\";\nconst root = document.getElementById(\"root\");\nif (root) ReactDOM.createRoot(root).render(<App />);",
+  "src/App.tsx": "import React from \"react\";\nexport default function App() {\n  return <div className=\"app-container\"><h1>Hello, AI GO!</h1></div>;\n}",
+  "src/App.css": ":host, :root {\n  --primary: #2563eb;\n  font-family: system-ui, sans-serif;\n  color: #1e293b;\n}\nhtml, :host { box-sizing: border-box; }\n.app-container { height: 100vh; overflow-y: auto; padding: 24px; }"
+}
