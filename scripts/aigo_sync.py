@@ -71,6 +71,17 @@ def sync_to_cloud(base_url: str, token: str, app_id: str, files: dict[str, str],
     if resp.status_code == 409:
         raise ValueError("VFS 版本衝突 (409)。請重新取得最新版本後重試。")
     resp.raise_for_status()
+    # ★ 二次 GET 驗證
+    from aigo_auth import get_app_info
+    verify_app = get_app_info(base_url, token, app_id)
+    v_after = verify_app.get('vfs_version', 0)
+    if v_after <= expected_version:
+        raise RuntimeError(f'VFS 同步驗證失敗：版本號未遞增 ({expected_version} → {v_after})')
+    # 驗證檔案是否確實寫入
+    remote_vfs = verify_app.get('vfs_state', {})
+    for path in files:
+        if path not in remote_vfs:
+            raise RuntimeError(f'VFS 同步驗證失敗：檔案 {path} 未出現在遠端 VFS')
     return resp.json()
 
 

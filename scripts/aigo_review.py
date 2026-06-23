@@ -3,10 +3,14 @@ import json
 import re
 from typing import Any
 
-# SDK 保護清單
+# SDK 保護清單（必定存在且不可修改）
 SDK_FILES = {"src/api.ts", "src/db.ts", "src/action.ts"}
-INJECTED_FILES = {"src/data.json", "src/db.json", "src/actions.json"}
-PROTECTED_FILES = SDK_FILES | INJECTED_FILES
+# 已知 Runtime 注入檔模式（不一定全部存在，依 App 狀態而定）
+KNOWN_INJECTED_PATHS = {"src/data.json", "src/db.json", "src/actions.json"}
+# 保護檔集合（同步/腳手架時應跳過的路徑）
+PROTECTED_FILES = SDK_FILES | KNOWN_INJECTED_PATHS
+# 相容舊引用
+INJECTED_FILES = KNOWN_INJECTED_PATHS
 
 
 def review_app(base_url: str, token: str, app_id: str) -> dict:
@@ -24,7 +28,13 @@ def analyze_vfs(vfs_state: dict) -> dict:
     """分析 VFS 結構"""
     files_info = []
     for path, content in sorted(vfs_state.items()):
-        tag = "[SDK]" if path in SDK_FILES else "[INJ]" if path in INJECTED_FILES else "[APP]"
+        # 動態分類：INJ 標籤只在路徑確實存在於 VFS 時才套用
+        if path in SDK_FILES:
+            tag = "[SDK]"
+        elif path in KNOWN_INJECTED_PATHS:
+            tag = "[INJ]"
+        else:
+            tag = "[APP]"
         files_info.append({"path": path, "size": len(content), "tag": tag})
 
     # 解析路由

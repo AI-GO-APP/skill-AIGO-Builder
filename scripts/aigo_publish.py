@@ -9,6 +9,11 @@ def publish_app(base_url: str, token: str, app_id: str) -> dict:
     resp = httpx.post(f"{base_url}/api/v1/builder/apps/{app_id}/publish",
                       headers=headers, json={"published_assets": {}}, timeout=30)
     resp.raise_for_status()
+    # ★ 二次 GET 驗證
+    from aigo_auth import get_app_info
+    verify = get_app_info(base_url, token, app_id)
+    if verify.get('status') != 'published':
+        raise RuntimeError(f"發布驗證失敗：status={verify.get('status')}，預期 published")
     return resp.json()
 
 
@@ -39,7 +44,15 @@ def full_deploy(base_url: str, token: str, app_id: str, slug: str, project_path:
     if not compile_result.get("success"):
         result["compile"]["error"] = compile_result.get("error", "未知錯誤")
         return result
+    # ★ 二次驗證：確認編譯成功
+    if not result["compile"]["success"]:
+        raise RuntimeError("部署流程中止：編譯結果驗證失敗")
 
     # 3. 發布
     result["publish"] = publish_app(base_url, token, app_id)
+    # ★ 二次 GET 驗證：確認發布狀態
+    from aigo_auth import get_app_info
+    verify = get_app_info(base_url, token, app_id)
+    if verify.get('status') != 'published':
+        raise RuntimeError(f"完整部署驗證失敗：status={verify.get('status')}，預期 published")
     return result
