@@ -122,14 +122,97 @@ const { data, file } = await runAction("my_action", { key: "value" });
 if (file) downloadFile(file);
 ```
 
-## Phase 4：部署
+## Phase 4：部署 + 自動驗證（★ 每次 code 變更後必須執行）
 
-### 流程
+> **原則：每次 code 變更後，都必須完成「同步 → 編譯 → 驗證」循環。**
+> 只有通過驗證閘門，才可進入發布或繼續下一輪開發。
+> 極小變更（如僅修改文字、CSS 微調）可跳過 Custom Data 和 Action 測試，但編譯驗證不可跳過。
+
+### 4.1 標準部署流程
 
 1. **同步 VFS**：讀取本地檔案 → PATCH `/api/v1/builder/apps/{id}/source/files`
+   - 腳本：`scripts/aigo_sync.py` 的 `sync_to_cloud()`
+   - ★ 內建二次驗證：PATCH 後自動 GET 確認 vfs_version 遞增 + 檔案確實寫入
 2. **編譯**：POST `/api/v1/compile/compile/{slug}?dev=true`
+   - 腳本：`scripts/aigo_compile.py` 的 `compile_app()`
 3. **編譯失敗**：解析錯誤 → 嘗試自動修復 → 重新同步 → 重新編譯（最多 5 次）
-4. **編譯成功**：POST `/api/v1/builder/apps/{id}/publish`
+4. **編譯成功 → 進入驗證閘門**（Phase 4.2）
+
+### 4.2 驗證閘門（Verification Gate）
+
+每次編譯成功後，根據**變更範圍**自動決定需要執行的驗證項目：
+
+#### 變更範圍判斷規則
+
+| 變更類型 | 影響範圍 | 需執行的驗證 |
+|---------|---------|------------|
+| **CSS 微調**（僅 App.css 變動） | 極小 | ✅ Compile 產物 |
+| **文案/UI 修改**（僅 TSX 變動，無新 import） | 小 | ✅ Compile 產物 |
+| **元件新增/重構**（新增 TSX、修改路由） | 中 | ✅ Compile 產物 + ✅ Publish 一致性 |
+| **Custom Data 相關**（修改了使用 api.ts/db.ts 的程式碼） | 中 | ✅ Compile 產物 + ✅ Custom Data CRUD |
+| **Server Action 變更**（actions/*.py 修改） | 中 | ✅ Compile 產物 + ✅ Server Action 呼叫 |
+| **多個範圍同時變動** | 大 | ✅ 全部 4 項驗證 |
+| **首次部署或架構變更** | 大 | ✅ 全部 4 項驗證 |
+
+#### 驗證項目詳細定義
+
+使用 `scripts/aigo_runtime_verify.py` 執行。
+
+**① Compile 產物驗證**（★ 每次必跑）
+```
+verify_compile_output(compile_result)
+  ✓ compile_success == true
+  ✓ html 含 <!DOCTYPE> 和 id="root"
+  ✓ bundle_js 含 React（> 500 bytes）
+  ✓ css 非空（> 50 bytes）
+```
+
+**② Publish 一致性驗證**（元件新增 / 路由變更 / 發布後必跑）
+```
+verify_publish_consistency(base_url, token, app_id)
+  ✓ status == "published"
+  ✓ published_at 已更新
+  ✓ published_vfs 與 vfs_state 檔案路徑一致
+  ✓ published_vfs 與 vfs_state 內容一致
+```
+
+**③ Custom Data CRUD 驗證**（使用了 api.ts / db.ts 時必跑）
+```
+verify_custom_data_crud(base_url, token, table_id)
+  ✓ CREATE → 201 + 回傳 id
+  ✓ GET 確認寫入（二次驗證）
+  ✓ DELETE → 204
+  ✓ GET 確認刪除（二次驗證）
+```
+
+**④ Server Action 呼叫驗證**（actions/*.py 變更時必跑）
+```
+verify_server_action(base_url, token, app_id, action_name, params)
+  ✓ HTTP 200
+  ✓ execution_id 非空
+  ✓ status == "success"
+  ✓ result 非 null
+  ✓ 無 error
+  ✓ 執行時間 < 30 秒
+```
+
+### 4.3 驗證後決策
+
+| 驗證結果 | 下一步 |
+|---------|--------|
+| ✅ 全部通過 | 可進入發布（4.4）或繼續開發 |
+| ❌ Compile 失敗 | 回到 Phase 3 修復程式碼 |
+| ❌ CRUD/Action 失敗 | 檢查 API 使用方式、表結構、Action 邏輯 |
+| ❌ Publish 一致性失敗 | 重新 sync → compile → publish |
+
+### 4.4 發布
+
+只有通過驗證閘門後才可發布：
+
+1. POST `/api/v1/builder/apps/{id}/publish`
+   - 腳本：`scripts/aigo_publish.py` 的 `publish_app()`
+   - ★ 內建二次驗證：POST 後自動 GET 確認 status == "published"
+2. 發布後執行 Publish 一致性驗證
 
 ### 樂觀鎖
 
@@ -148,18 +231,40 @@ if (file) downloadFile(file);
 
 可使用 `scripts/aigo_sync.py`、`aigo_compile.py`、`aigo_publish.py`。
 
-## Phase 5：E2E 驗證
+## Phase 5：完整 E2E 驗證（里程碑驗證）
 
-6 大測試群組：
+> Phase 4 的驗證閘門在每次迭代中自動執行。
+> Phase 5 是在**開發里程碑完成**（例如功能全部完成、準備交付）時執行的完整驗證。
 
-1. **編譯驗證** — 確認 `success: true`
-2. **Custom Data CRUD** — 建表 → 寫入 → 查詢 → 更新 → 刪除 → 清理
-3. **Server Action** — 注入測試 Action → 編譯 → 呼叫 → 清理
-4. **發布驗證** — 確認 `status: published`
-5. **External Auth**（可選）— 註冊 → 登入 → 取得用戶 → 登出
-6. **Public 匿名**（可選）— 設定公開 → pub/ API 讀取 → 確認寫入被拒
+### 完整驗證 = Phase 4 所有項目 + 以下補充
 
-可使用 `scripts/aigo_e2e.py`。
+5. **全功能 Runtime 驗證**
+   ```python
+   from aigo_runtime_verify import run_full_runtime_verification, format_verification_report
+   results = run_full_runtime_verification(
+       base_url, token, app_id, slug,
+       table_id="...",          # Custom Data 表 UUID
+       action_name="..."        # 任一 Server Action 名稱
+   )
+   print(format_verification_report(results))
+   ```
+6. **External Auth**（可選）— 註冊 → 登入 → 取得用戶 → 登出
+7. **Public 匿名**（可選）— 設定公開 → pub/ API 讀取 → 確認寫入被拒
+
+可使用 `scripts/aigo_e2e.py` 和 `scripts/aigo_runtime_verify.py`。
+
+## 驗證流程快速參照
+
+```
+每次 code 變更：
+  sync → compile → ✅ Compile 產物驗證
+                   └─ (若涉及 Data) → ✅ Custom Data CRUD
+                   └─ (若涉及 Action) → ✅ Server Action 呼叫
+                   └─ (若涉及路由/元件) → publish → ✅ Publish 一致性
+
+里程碑交付：
+  上述全部 + External Auth + Public 匿名（如適用）
+```
 
 ## 錯誤處理速查
 
@@ -177,6 +282,10 @@ if (file) downloadFile(file);
 | 423 Locked | 有待審核的發布，等待或取消 |
 | Action 超時 | 控制在 30 秒內 |
 | pub/ API 403 | 確認 `allow_anonymous_access=true` |
+| Compile 產物驗證失敗 | 檢查 main.tsx 入口和 App.css import |
+| CRUD 驗證失敗 | 確認 Custom Table 已建立且欄位正確 |
+| Action 驗證失敗 | 檢查 execute(ctx) 函式、依賴模組白名單 |
+| Publish 一致性失敗 | 重新 sync → compile → publish 完整循環 |
 
 ## 參考文件
 
