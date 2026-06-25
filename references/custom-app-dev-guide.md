@@ -251,9 +251,10 @@ const myRecords = allRecords.filter(
 
 ### 決策流程
 
-1. 檢查 `db.json` 中的 SaaS 表，是否有結構相似的表
-2. 確認該表是否有 `custom_data`（JSONB）欄位可擴充
+1. 用 Refs API 查詢所有可用 SaaS 表（見 §20），確認是否有結構相似的表
+2. 用 Refs API 查詢該表欄位，確認是否有 `custom_data`（JSONB）欄位可擴充
 3. 確認權限（read/create/update/delete）是否滿足需求
+4. 在 AI GO Builder 後台將選定的表加入 Data Reference，使其出現在 `db.json`
 
 ### 選擇矩陣
 
@@ -281,3 +282,87 @@ SaaS 表通常包含以下標準欄位：
 | `created_at` | TIMESTAMP | 建立時間 |
 | `updated_at` | TIMESTAMP | 更新時間 |
 
+## 20. Data Reference 探索 API
+
+用於在開發規劃階段（Phase 1.5）探索所有可用的 SaaS 表，決定哪些表適合作為 Data Reference。
+
+### 20.1 查詢可用資料表清單
+
+```http
+GET /api/v1/refs/available-tables
+Authorization: Bearer {access_token}
+```
+
+功能：列出資料庫中所有目前可以被 Custom App 引用的資料表名稱與備註。自動排除系統敏感黑名單表。
+
+權限限制：帳號必須擁有 `builder.access` 權限。
+
+回應範例：
+
+```json
+[
+  {"name": "customers", "comment": "客戶/夥伴"},
+  {"name": "sale_orders", "comment": "銷售訂單"},
+  {"name": "project_projects", "comment": "專案"},
+  {"name": "project_tasks", "comment": "專案任務"},
+  {"name": "account_invoices", "comment": "發票"},
+  {"name": "product_templates", "comment": "產品模板"}
+]
+```
+
+### 20.2 查詢特定資料表欄位
+
+```http
+GET /api/v1/refs/tables/{table_name}/columns
+Authorization: Bearer {access_token}
+```
+
+功能：列出指定資料表下可用的欄位資訊（含欄位名稱、資料型別、是否可為 Null、是否為系統欄位）。
+
+權限限制：帳號必須擁有 `builder.access` 權限。
+
+回應範例：
+
+```json
+[
+  {"name": "id", "type": "UUID", "nullable": false, "is_system": true},
+  {"name": "tenant_id", "type": "UUID", "nullable": false, "is_system": true},
+  {"name": "name", "type": "VARCHAR(255)", "nullable": false, "is_system": false},
+  {"name": "email", "type": "VARCHAR(255)", "nullable": true, "is_system": false},
+  {"name": "phone", "type": "VARCHAR(50)", "nullable": true, "is_system": false},
+  {"name": "custom_data", "type": "JSONB", "nullable": true, "is_system": false},
+  {"name": "created_at", "type": "TIMESTAMP", "nullable": false, "is_system": true},
+  {"name": "updated_at", "type": "TIMESTAMP", "nullable": false, "is_system": true}
+]
+```
+
+欄位說明：
+
+| 欄位 | 說明 |
+|------|------|
+| `name` | 欄位名稱 |
+| `type` | 資料型別（UUID, VARCHAR, TEXT, INTEGER, BOOLEAN, NUMERIC, JSONB, DATE, TIMESTAMP 等） |
+| `nullable` | 是否可為 NULL |
+| `is_system` | 是否為系統欄位（id, tenant_id, created_at, updated_at 等，不可手動寫入） |
+
+### 20.3 典型使用流程
+
+```
+Phase 1.5 實作計畫時：
+
+1. GET /api/v1/refs/available-tables
+   → 取得所有可用 SaaS 表清單
+
+2. 對每個候選表 GET /api/v1/refs/tables/{name}/columns
+   → 確認欄位結構、是否有 custom_data (JSONB)
+
+3. 決定資料架構：哪些需求用 SaaS 表、哪些用 Custom Table
+
+4. 在 AI GO Builder 後台將選定的 SaaS 表加入 Data Reference
+   → 表即出現在 VFS 的 db.json 中
+
+5. 重新 Phase 0 Review 確認 db.json 已包含所需的表
+```
+
+> **重要**：`available-tables` 僅列出可用表名，實際將表加入 App 的 Data Reference 需在 AI GO Builder 後台操作。
+> 加入後，該表的完整 schema 和資料會自動注入到 `src/db.json`。

@@ -84,10 +84,13 @@ description: >
    - 每個 App 的 `app_domain` 標籤建議值
 
 3. **資料架構設計**（★ 必須遵循 Data Reference 優先策略，見 Phase 3 規則 18）
+   - 先呼叫 `GET /api/v1/refs/available-tables` 取得所有可用 SaaS 表清單
+   - 對候選表呼叫 `GET /api/v1/refs/tables/{name}/columns` 查看欄位結構
    - 列出所有需要的資料表
    - 逐表說明：使用現有 SaaS 表（db.json）還是建立 Custom Table（data.json）
    - 每個使用 SaaS 表的場景，說明如何利用 `custom_data`（JSONB）欄位擴充
    - 若全部使用 Custom Table，需明確說明為何 SaaS 表不適用
+   - 若決定使用的 SaaS 表尚未在 db.json 中，引導用戶到 Builder 後台加入 Data Reference
 
 4. **頁面架構**
    - 路由結構（單頁 / 多頁）
