@@ -27,6 +27,11 @@ description: >
    - 解析 App.tsx 路由結構
    - 解析 _manifest.json 頁面清單
    - 解析 data.json Custom Table 定義
+   - **解析 db.json Data Reference 定義**（★ 重要）：
+     - 列出所有 SaaS 表名稱和欄位結構
+     - 標記哪些表有 `custom_data`（JSONB）欄位
+     - 列出每張表的權限（read/create/update/delete）
+     - 統計現有資料筆數和 `app_domain` 分布
    - 解析 actions/manifest.json
    - 檢查 App.css Shadow DOM 相容性
 6. **確認已完全理解現有結構後，才可進入開發**
@@ -44,7 +49,8 @@ description: >
   "app_id": "",
   "app_slug": "",
   "app_name": "",
-  "access_mode": "internal"
+  "access_mode": "internal",
+  "app_domain": ""
 }
 ```
 
@@ -59,6 +65,44 @@ description: >
    - 填入 `.aigo/config.json` 的 `email` 和 `app_id`
 4. 驗證連線：用戶臨時輸入密碼 → Login API → GET App → 自動回填 `slug`、`name`、`access_mode`
 5. **密碼不儲存到任何檔案中**
+
+## Phase 1.5：實作計畫（★ 強制步驟）
+
+> **在任何開發工作開始前（包含從模板建立），必須先提出實作計畫並獲得用戶確認。**
+> **禁止跳過此步驟直接進入 Phase 2 寫 code。**
+
+### 計畫內容必須包含
+
+1. **需求分析**
+   - 用戶要實現的功能清單
+   - 每個功能的目標使用場景
+   - 預期的使用者流程
+
+2. **場景拆分與 App 邊界建議**
+   - 若需求涵蓋 2 群以上不同功能與目的的情景，**必須建議用戶分別做成不同的 Custom App**
+   - 例如：「客戶管理」和「財務報表」應為 2 個獨立 App
+   - 每個 App 的 `app_domain` 標籤建議值
+
+3. **資料架構設計**（★ 必須遵循 Data Reference 優先策略，見 Phase 3 規則 18）
+   - 列出所有需要的資料表
+   - 逐表說明：使用現有 SaaS 表（db.json）還是建立 Custom Table（data.json）
+   - 每個使用 SaaS 表的場景，說明如何利用 `custom_data`（JSONB）欄位擴充
+   - 若全部使用 Custom Table，需明確說明為何 SaaS 表不適用
+
+4. **頁面架構**
+   - 路由結構（單頁 / 多頁）
+   - 主要頁面和功能
+   - Server Action 需求
+
+5. **app_domain 標籤設計**
+   - 確定此 App 的 `app_domain` 值（snake_case，如 `patent_os`、`crm_leads`）
+   - 說明標籤用途：所有寫入 SaaS 表的資料都會帶上此標籤
+
+### 計畫閘門
+
+- **必須等待用戶明確回覆「同意」或提供修改意見後，才可進入 Phase 2**
+- 若用戶修改需求，需更新計畫後再次確認
+- 計畫確認後將 `app_domain` 值記錄到 `.aigo/config.json`
 
 ## Phase 2：專案腳手架
 
@@ -96,6 +140,35 @@ description: >
 15. **完整程式碼原則**：每次更新 VFS 檔案必須提供 100% 完整內容，禁止 `// ...省略` 佔位符
 16. **不支援動態 import**：`import()` 語法不支援（lazy loading 除外，esbuild 支援 code splitting）
 17. **不支援 Node.js 原生模組**：fs, path, crypto 等無法使用
+18. **Data Reference 優先策略**（★ 強制）
+    - 所有資料需求必須**優先查看 db.json 中的 SaaS 表**是否已有合適的表
+    - SaaS 表通常包含 `custom_data`（JSONB）欄位，可存放任意結構化擴充資料
+    - **只有確認所有 SaaS 表都無法滿足需求時**，才可使用 Custom Table（data.json）
+    - 決策優先順序：
+      1. 使用現有 SaaS 表 + `custom_data` JSONB 欄位
+      2. 使用現有 SaaS 表 + 新增 Custom Table 補充
+      3. 僅使用 Custom Table（最後手段）
+19. **app_domain 標籤規範**（★ 強制）
+    - 所有寫入 SaaS 表（Data Reference）的資料，都必須在 `custom_data` JSONB 中包含 `app_domain` 欄位
+    - `app_domain` 值記錄在 `.aigo/config.json` 中，在 Phase 1.5 決定
+    - 格式：snake_case，如 `patent_os`、`crm_leads`、`inventory_mgr`
+    - 寫入範例：
+      ```typescript
+      const newRecord = {
+        name: "案件名稱",
+        custom_data: {
+          app_domain: "patent_os",  // ★ 必須標記
+          case_no: "IP-001",
+          status: "進行中"
+        }
+      };
+      ```
+    - 讀取時應過濾本 App 的資料：
+      ```typescript
+      const records = allRecords.filter(
+        r => r.custom_data?.app_domain === "patent_os"
+      );
+      ```
 
 ### Server-Side Action 撰寫
 

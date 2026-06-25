@@ -82,6 +82,34 @@ def analyze_vfs(vfs_state: dict) -> dict:
         except json.JSONDecodeError:
             pass
 
+    # 解析 Data Reference（db.json）
+    data_references = []
+    db_json_str = vfs_state.get("src/db.json", "")
+    if db_json_str and db_json_str != "{}":
+        try:
+            db_json = json.loads(db_json_str)
+            for table_key, info in db_json.items():
+                columns = info.get("columns", [])
+                col_names = [c.get("name", "") for c in columns]
+                has_custom_data = "custom_data" in col_names
+                # 統計 app_domain 分布
+                app_domains = {}
+                for record in info.get("data", []):
+                    cd = record.get("custom_data") or {}
+                    domain = cd.get("app_domain", "_none_")
+                    app_domains[domain] = app_domains.get(domain, 0) + 1
+                data_references.append({
+                    "table": info.get("table", table_key),
+                    "permissions": info.get("permissions", []),
+                    "columns_count": len(columns),
+                    "columns": col_names,
+                    "has_custom_data": has_custom_data,
+                    "records_count": len(info.get("data", [])),
+                    "app_domains": app_domains,
+                })
+        except json.JSONDecodeError:
+            pass
+
     # CSS 檢查
     css_content = vfs_state.get("src/App.css", "")
     css_issues = check_css_compliance(css_content)
@@ -96,6 +124,7 @@ def analyze_vfs(vfs_state: dict) -> dict:
         "router_type": router_type,
         "pages": pages,
         "tables": tables,
+        "data_references": data_references,
         "actions": actions,
         "css_issues": css_issues,
     }
@@ -150,6 +179,17 @@ def format_review_report(app_info: dict, analysis: dict) -> str:
         lines.append(f"⚡ Server Actions（{len(analysis['actions'])} 個）")
         for a in analysis["actions"]:
             lines.append(f"  {a['name']} — {a['description']}")
+        lines.append("")
+    if analysis.get("data_references"):
+        lines.append(f"🗃️ Data Reference / SaaS 表（{len(analysis['data_references'])} 張）")
+        for dr in analysis["data_references"]:
+            perms = ", ".join(dr["permissions"]) if dr["permissions"] else "N/A"
+            cd_mark = " ★ 含 custom_data" if dr["has_custom_data"] else ""
+            lines.append(f"  {dr['table']} ({dr['columns_count']} 欄位, {dr['records_count']} 筆){cd_mark}")
+            lines.append(f"    權限：{perms}")
+            if dr["app_domains"]:
+                domains_str = ", ".join(f"{k}={v}" for k, v in dr["app_domains"].items())
+                lines.append(f"    app_domain 分布：{domains_str}")
         lines.append("")
     css_status = "✅ 通過" if not analysis["css_issues"] else "❌ 有問題"
     lines.append(f"🎨 CSS 規範 {css_status}")

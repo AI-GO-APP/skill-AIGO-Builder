@@ -195,3 +195,89 @@ Runtime 內建：react ^18.x, react-dom ^18.x, react-router-dom ^6.x, lucide-rea
 | 401 | Token 過期，重新登入 |
 | 409 | VFS 版本衝突，重新 GET |
 | 423 | 有待審核發布，等待/取消 |
+
+## 18. 核心策略：app_domain 標籤
+
+### 概念
+
+每個 Custom App 在寫入 SaaS 表（Data Reference）時，必須在 `custom_data` JSONB 中標記 `app_domain`，
+用於標識該筆資料由哪個 App 建立，實現多 App 共用同一張表但資料隔離。
+
+### 格式
+
+- snake_case，如 `patent_os`、`crm_leads`、`inventory_mgr`
+- 記錄在 `.aigo/config.json` 的 `app_domain` 欄位
+
+### 寫入規範
+
+所有 `db.insert()` 和 `db.update()` 呼叫，payload 的 `custom_data` 中必須包含：
+
+```json
+{
+  "custom_data": {
+    "app_domain": "<config 中的值>",
+    "...其他欄位": "..."
+  }
+}
+```
+
+### 讀取規範
+
+讀取 SaaS 表資料時，應用 `app_domain` 過濾，僅處理本 App 建立的資料：
+
+```typescript
+const myRecords = allRecords.filter(
+  r => r.custom_data?.app_domain === APP_DOMAIN
+);
+```
+
+### 實例
+
+```json
+{
+  "name": "AI溢流防護裝置",
+  "custom_data": {
+    "app_domain": "patent_os",
+    "case_no": "IP-E2E-FULL-001",
+    "status": "待檢索",
+    "country": "TW",
+    "patent_type": "發明",
+    "inventor": "王大明、李小華"
+  }
+}
+```
+
+## 19. Data Reference vs Custom Table 選擇指引
+
+### 決策流程
+
+1. 檢查 `db.json` 中的 SaaS 表，是否有結構相似的表
+2. 確認該表是否有 `custom_data`（JSONB）欄位可擴充
+3. 確認權限（read/create/update/delete）是否滿足需求
+
+### 選擇矩陣
+
+| 條件 | 選擇 | 說明 |
+|------|------|------|
+| SaaS 表有適合的主表結構 + JSONB 欄位 | **Data Reference** | 用 `custom_data` 存放 App 特有資料 |
+| SaaS 表結構部分適用 | **Data Reference + Custom Table** | 主資料用 SaaS 表，輔助資料用 Custom Table |
+| 需要完全自訂的獨立資料結構 | **Custom Table** | 最後手段 |
+| 需要與其他 SaaS 功能整合 | **Data Reference**（優先） | 與看板、專案等功能共用資料 |
+
+### SaaS 表常見結構
+
+SaaS 表通常包含以下標準欄位：
+
+| 欄位 | 型別 | 說明 |
+|------|------|------|
+| `id` | UUID | 主鍵 |
+| `name` | VARCHAR | 名稱 |
+| `active` | BOOLEAN | 啟用狀態 |
+| `description` | TEXT | 描述 |
+| `custom_data` | JSONB | **App 擴充資料**（app_domain + 自訂欄位） |
+| `user_id` | UUID | 負責人 |
+| `customer_id` | UUID | 客戶 |
+| `stage_id` | UUID | 階段 |
+| `created_at` | TIMESTAMP | 建立時間 |
+| `updated_at` | TIMESTAMP | 更新時間 |
+
