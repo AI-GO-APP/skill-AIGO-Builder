@@ -96,7 +96,6 @@ def execute(ctx):
     ctx.csv.export(r)   # CSV
 ```
 
-白名單模組：json, math, re, datetime, httpx 等。超時 30 秒、256MB 記憶體。
 
 ## 8. 發布
 

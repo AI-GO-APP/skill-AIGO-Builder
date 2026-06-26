@@ -188,7 +188,6 @@ def execute(ctx):
     ctx.response.json({"result": data})
 ```
 
-安全限制：白名單模組（json, math, re, datetime, httpx 等）、禁止 exec/eval/open、超時 30 秒。
 
 ### 前端呼叫 Action
 
