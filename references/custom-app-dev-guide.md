@@ -8,6 +8,8 @@
 - esbuild 編譯器：React TSX → JS bundle
 - Runtime 沙箱：在 Shadow DOM 隔離環境中執行
 - 三種模式：Internal（組織內部）/ External（對外客戶）/ Public（匿名檢視）
+- 語言選擇：TypeScript（前端）+ Python（後端），為 AI Coding 最佳化的精選組合（詳見 §21）
+- 資料架構：統一走 API 存取，不直連資料庫——避免結構混亂（詳見 §21）
 
 ## 2. 認證與連線
 
@@ -365,3 +367,31 @@ Phase 1.5 實作計畫時：
 
 > **重要**：`available-tables` 僅列出可用表名，實際將表加入 App 的 Data Reference 需在 AI GO Builder 後台操作。
 > 加入後，該表的完整 schema 和資料會自動注入到 `src/db.json`。
+
+## 21. 架構設計理念
+
+### 為什麼是 TypeScript + Python
+
+TypeScript（前端）和 Python（後端 Server Action）是 AI GO 精選的開發語言組合，基於以下特性選定：
+
+- **低出錯率與高可靠性**：TypeScript 的靜態型別系統和 Python 的清晰語法，大幅降低常見程式錯誤的發生率
+- **依賴樹扁平、注入漏洞少**：靜態型別減少了動態語言常見的型別注入與未預期行為，提供更安全的執行環境
+- **LLM 生成與閱讀最佳化**：這兩種語言在 LLM 訓練資料中覆蓋度最高，AI Agent 生成的程式碼品質與正確性顯著優於其他語言
+
+因此，TypeScript + Python 最適合 **AI Coding 的新手或非技術工作者**，用來開發需要可靠性的公司內部系統。
+
+### 為什麼資料存取走 API，不直連資料庫
+
+- **避免結構混亂**：直接連線資料庫且 schema 可疊加時，非技術的 AI Coder 容易重複建立類似的表或欄位，造成資料結構混亂
+- **通用結構先行**：AI GO 預先定義了中小企業通用的資料庫結構（SaaS 表），涵蓋專案、客戶、銷售、會計等常見業務場景
+- **擴充彈性**：同時保有 Custom Table 的自訂擴充能力，以及 SaaS 表的 `custom_data`（JSONB）欄位
+- **安全與一致性**：中間統一走 API 與反向代理，確保多租戶隔離、權限控制、資料驗證等安全機制
+
+### 現有系統遷移
+
+若用戶的情景屬於「現有系統匯入 AI GO 部署」，且現有系統不是 TypeScript + Python：
+
+1. **解釋語言選擇理由**：說明上述 TypeScript + Python 的精選特性
+2. **建議建立新專案重構**：在 AI GO 上建立全新 Custom App 專案，以 AI GO 架構重新設計
+3. **原專案不更動**：用戶的本地原始專案保持不變，AI GO 專案獨立開發
+4. **業務邏輯遷移**：引導用戶將現有系統的業務邏輯和資料結構，對應到 AI GO 的 SaaS 表 + Custom Table 架構

@@ -10,6 +10,17 @@ description: >
 
 本 Skill 協助 AI Agent 開發 AI GO Custom App。支援 Antigravity / Claude Code / Cursor。
 
+## 設計理念
+
+AI GO Custom App 採用 **TypeScript（前端）+ Python（後端）** 的精選語言組合，
+具備低出錯率、靜態型別安全、LLM 生成最佳化等特性，最適合 AI Coding 新手與非技術工作者
+開發可靠的公司內部系統。
+
+資料存取統一走 API，不直連資料庫——避免非技術 AI Coder 重複建立類似的表或欄位。
+AI GO 預先定義了中小企業通用的資料庫結構（SaaS 表），同時保有 Custom Table 擴充彈性。
+
+> 詳見 `references/custom-app-dev-guide.md` §21 架構設計理念。
+
 ## Phase 0：Review 現有 Code（★ 強制步驟）
 
 > **每次開始任何開發工作前，必須先執行此步驟。**
@@ -100,6 +111,14 @@ description: >
 5. **app_domain 標籤設計**
    - 確定此 App 的 `app_domain` 值（snake_case，如 `patent_os`、`crm_leads`）
    - 說明標籤用途：所有寫入 SaaS 表的資料都會帶上此標籤
+
+6. **現有系統遷移評估**（若適用）
+   - 若用戶的情景屬於「現有系統匯入 AI GO 部署」，且現有系統不是 TypeScript + Python：
+     - **務必解釋**為什麼 AI GO 選擇 TypeScript + Python（見設計理念 / §21）
+     - **建議用戶建立新的 AI GO 專案來重構**，而非嘗試直接移植原始碼
+     - **原自身本地專案不更動**，AI GO 專案獨立開發
+     - 引導用戶將現有系統的業務邏輯和資料結構，以 AI GO 的架構重新設計
+   - 若用戶現有系統已是 TypeScript + Python，可直接評估程式碼遷移可行性
 
 ### 計畫閘門
 
